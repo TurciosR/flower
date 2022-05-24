@@ -1,0 +1,6 @@
+INSERT INTO `modulo` (`id_modulo`, `id_menu`, `nombre`, `descripcion`, `filename`, `mostrarmenu`) VALUES
+(NULL, 4, 'Admin Empleados', 'Admin Empleados', 'admin_empleado.php', 1),
+(NULL, 4, 'Agregar Empleado', 'Agregar Empleado', 'agregar_empleado.php', 0),
+(NULL, 4, 'Editar Empleado', 'Editar Empleado', 'editar_empleado.php', 0),
+(NULL, 4, 'Borrar Empleado', 'Borrar Empleado', 'borrar_empleado.php', 0),
+(NULL, 4, 'Ver Empleado', 'Ver Empleado', 'ver_empleado.php', 0);

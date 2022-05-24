@@ -1,0 +1,896 @@
+var urlprocess='';
+$(document).ready(function() {
+
+$('.select').select2();
+var urlprocess=$('#urlprocess').val();
+$('#formulario').validate({
+	    rules: {
+                    descripcion: {
+                    required: true,
+                     },
+                    precio1: {
+                    required: true,
+                    number: true,
+                     },
+                 },
+        submitHandler: function (form) {
+            senddata();
+        }
+    });
+		// Clean the modal form
+$(document).on('hidden.bs.modal', function(e) {
+	var target = $(e.target);
+	target.removeData('bs.modal').find(".modal-content").html('');
+});
+
+$("#n_ref").keypress(function(e) {
+    if(e.which == 13) {
+      cargar_ref();
+			$("#n_ref").val("");
+    }
+});
+$(".decimal").numeric();
+$('#id_cliente').select2({
+        allowClear: true,
+        escapeMarkup: function (markup) { return markup; },
+        placeholder: "Buscar Cliente",
+        language: {
+            noResults: function () {
+							var modalcliente="<a href='modal_cliente.php' data-toggle='modal' data-target='#clienteModal'>";
+  						modalcliente+="Agregar Cliente</a>";
+								 return modalcliente;
+            }
+        }
+    });
+
+		$(document).keydown(function(e){
+	    if(e.which == 113){ //F2 Guardar
+	      e.stopPropagation();
+	      senddata();
+	    }
+	    if(e.which == 119) {//F8 Imprimir
+	         //$('#busca_descrip_activo').prop("checked", false);
+	        //activar_busqueda()
+	        //PENDIENTE
+	    }
+	    if(e.which == 120) { //F9 Salir
+	    //PENDIENTE
+	    }
+	  });
+
+$('#form_fact_consumidor').hide();
+$('#form_fact_ccfiscal').hide();
+
+//Boton de imprimir deshabilitado hasta que se guarde la factura
+$('#print1').prop('disabled', true);
+$('#submit1').prop('disabled', false);
+//$('#print1').prop('disabled', false);
+
+//$('#buscador').hide();
+$("#producto_buscar").typeahead({
+            source: function(query, process) {
+            //var textVal=$("#producto_buscar").val();
+                $.ajax({
+                    url: 'autocomplete_producto.php',
+                    type: 'POST',
+                    data: 'query=' + query ,
+                    dataType: 'JSON',
+                    async: true,
+                    success: function(data) {
+                        process(data);
+
+                    }
+                });
+            },
+              updater: function(selection){
+					var prod0=selection;
+						 var prod= prod0.split("|");
+						 var id_prod = prod[0];
+						 var descrip = prod[1];
+						  var marca = prod[2];
+
+						 agregar_producto_lista(id_prod, descrip,marca);
+				}
+        });
+
+
+});
+//function to round 2 decimal places
+function round(value, decimals) {
+    return Number(Math.round(value+'e'+decimals)+'e-'+decimals);
+}
+$(function (){
+	//binding event click for button in modal form
+	$(document).on("click", "#btnDelete", function(event) {
+		deleted();
+	});
+	// Clean the modal form
+	$(document).on('hidden.bs.modal', function(e) {
+		var target = $(e.target);
+		target.removeData('bs.modal').find(".modal-content").html('');
+	});
+
+});
+
+function cargar_ref()
+{
+	var n_ref = $("#n_ref").val();
+	var fecha = $("#fecha").val();
+	$.ajax({
+    type: 'POST',
+    url: "venta.php",
+    data: "process=cargar_data&n_ref="+n_ref+"&fecha="+fecha,
+    dataType: 'json',
+    success: function(datax) {
+			var id_cliente = datax.id_cliente;
+			var nombre_cliente = datax.nombre_cliente;
+			var alias_tipodoc = datax.alias_tipodoc;
+			var lista = datax.lista;
+			if(datax.typeinfo == "Success")
+			{
+				$("#id_cliente").val(id_cliente);
+				$("#text_cliente").val(nombre_cliente);
+				$("#tipo_impresion").val(alias_tipodoc);
+				$("#caja_detalles").html(lista);
+				console.log(lista);
+				$("#id_empleado").val(datax.id_empleado);
+				$("#id_factura").val(datax.id_factura);
+				$("#numero_doc").val(datax.numero_doc);
+				totalFact();
+			}
+			else
+			{
+					display_notify(datax.typeinfo,datax.msg);
+					$("#id_cliente").val(0);
+					$("#text_cliente").val("");
+					$("#tipo_impresion").val("");
+					$("#caja_detalles").html("");
+					$("#id_empleado").val("");
+					$("#id_factura").val("");
+					$("#numero_doc").val("");
+			}
+    }
+  });
+}
+// Evento para seleccionar una opcion y mostrar datos en un div
+$(document).on("change","#tipo_entrada", function (){
+	$( ".datepick2" ).datepicker();
+	$('#id_proveedor').select2();
+
+	var id=$("select#tipo_entrada option:selected").val(); //get the value
+	if(id!='0'){
+		$('#buscador').show();
+    }
+    else
+		$('#buscador').hide();
+
+	if (id=='1')
+		$('#form_fact_consumidor').show();
+	else
+		$('#form_fact_consumidor').hide();
+
+
+    if (id=='2')
+		$('#form_fact_ccfiscal').show();
+	else
+		$('#form_fact_ccfiscal').hide();
+
+});
+// Seleccionar el tipo de factura
+$(document).on("change","#tipo_entrada", function(){
+	var id=$("select#tipo_entrada option:selected").val(); //get the value
+	////alert(id);
+	$('#mostrar_numero_doc').load('editar_factura.php?'+'process=mostrar_numfact'+'&id='+id);
+});
+
+// Agregar productos a la lista del inventario
+function cargar_empleados(){
+	$('#inventable>tbody>tr').find("#select_empleado").each(function(){
+			$(this).load('editar_factura.php?'+'process=cargar_empleados');
+			totales();
+		});
+}
+
+function agregar_producto_lista(id_prod,descripcion,marca){
+	var id_prev="";
+	var tipoprod ="";
+	var descrip= descripcion;
+	var descrip_only= descripcion;
+	var tipo = 'PRODUCTO';
+	var id_prodtipo=id_prod+tipo;
+	var dataString = 'process=consultar_stock' + '&id_producto=' + id_prod+'&tipo='+tipo;
+	var filas=0;
+	  var id_previo = new Array();
+	$.ajax({
+		type : "POST",
+		url : "editar_factura.php",
+		data : dataString,
+		dataType : 'json',
+		success : function(data) {
+			var existencias= data.stock;
+			var  precio_venta  = data.precio_venta;
+			var iva= data.iva;
+			var unidades= data.unidades;
+			var id_punta= data.id_punta;
+			var nuevo= data.nuevo;
+			var imagenn=data.imagen;
+			var ubicacion=data.ubicacion;
+
+			var img = imagenn.split(",");
+			var imagen = img[0];
+			if (imagen==''){
+				var imagen_div="<img alt='image' class='img-rounded rounded-border' width='200px' height='100px' src='img/productos/no_disponible.png'>";
+		  }
+		  else{
+				var imagen_div="<img alt='image' class='img-rounded rounded-border' width='150px' height='100px'  src='"+imagen+"'>";
+			}
+			var description="<p class='font-bold'>Imagen: "+descrip_only +"</p>"
+
+			$("#imagen").html(imagen_div+description);
+			$("#inventable tr").each(function(index) {
+				if (index > 0) {
+					var campo0, campo1, campo2, campo5;
+
+					$(this).children("td").each(function(index2) {
+						var isVisible =false;
+						switch (index2) {
+							case 0:
+								campo0 = $(this).text();
+								isVisible = $(this).filter(":visible").length > 0;
+								if (isVisible == true) {
+										if (campo0 != undefined || campo0 != '') {
+											id_previo.push(campo0);
+										}
+								}
+								break;
+						}
+					});
+					filas = filas + 1;
+				} //if index>0
+			});
+	 		var subtotal=0;
+	 		if (existencias==null){
+		 		existencias=0;
+	 		}
+	 		if(id_punta>0){
+				descripcion+="<span class='text-warning'>&nbsp;(DENTRO DE UNA PUNTA)&nbsp;</span>";
+	 		}
+	 		if (nuevo==1){
+		 		descripcion+="<span class='text-success'>&nbsp;(NUEVO)</span>";
+	 		}
+	 		else{
+		 		descripcion+="<span class='text-danger'>&nbsp;(USADO)</span>";
+	 		}
+	 		descripcion+=" "+ubicacion;
+			subtotal=1*precio_venta;
+			//subtotal.toFixed(2);
+			var tr_add = "<tr id='"+filas+"'>";
+			tr_add += '<td >'+id_prod+'</td>';
+			tr_add += '<td>'+descripcion+'</td>';
+	tr_add += '<td>'+marca+'</td>';
+	tr_add += '<td>'+existencias+'</td>';
+	tr_add +="<td><div class='col-xs-2'><input type='text'  class='form-control decimal'  id='precio_venta' name='precio_venta' value='"+precio_venta+"' style='width:80px;'></div></td>";
+	tr_add +="<td><div class='col-xs-2'><input type='text'  class='form-control decimal' id='cant' name='cant' value='1' style='width:60px;'></div></td>";
+	tr_add += "<td id='subtot' class='text-right  text-warning'>"+subtotal.toFixed(2)+"</td>";
+	tr_add +=  "<td class='Delete' align='center'><a><i class='fa fa-trash'></i></a></td>";
+	tr_add += '</tr>';
+
+	//agregar columna a la tabla de facturacion
+  var existe = false;
+  var posicion_fila = 0;
+  $.each(id_previo, function(i, id_prod_ant) {
+    if (id_prod == id_prod_ant) {
+      existe = true;
+      posicion_fila = i;
+    }
+  });
+  if (existe == false) {
+    $("#inventable").append(tr_add);
+    $(".decimal").numeric();
+		//total de tabla de facturacion
+		totalFact();
+  }
+	if (filas>20){
+			var typeinfo='Warning';
+			var msg='Numero de Filas en Factura excede el maximo permitido !';
+			display_notify(typeinfo,msg);
+	}
+
+		}
+	});
+
+	totalFact();
+}
+//Evento que se activa al perder el foco en precio de venta y cantidad:
+$(document).on("blur","#cant, #precio_venta",function(){
+  totales();
+	totalFact();
+})
+$(document).on("focusout","#cant, #precio_venta",function(){
+  totales();
+	totalFact();
+})
+$(document).on("keyup","#cant, #precio_venta",function(){
+  totales();
+	totalFact();
+})
+// Evento que selecciona la fila y la elimina de la tabla
+$(document).on("click",".Delete",function(){
+	var parent = $(this).parents().get(0);
+	$(parent).remove();
+	  totalFact();
+});
+
+//Calcular Totales del grid
+function totales(){
+  $("#inventable tr").each(function (index) {
+    if (index>0) {
+       if( $('#inventable tr').is(":visible") ){
+        var cantidad =parseFloat($(this).closest("tr").find('td:eq(5)').find("#cant").val());
+      	var precio= parseFloat($(this).closest("tr").find('td:eq(4)').find("#precio_venta").val());
+      	var stock=  parseFloat($(this).closest("tr").find('td:eq(2)').text());
+      	if (cantidad>stock){
+         	cantidad = parseFloat(stock);
+         	$(this).closest("tr").find('td:eq(5)').find("#cant").val(cantidad);
+      	}
+     		subtotal = precio*cantidad;
+		 		console.log(subtotal+"-"+precio+"-"+cantidad)
+     		if (isNaN(subtotal))
+      		subtotal=0
+     		var new_subtotal='<span class="text-warning">'+subtotal.toFixed(2)+'</span>';
+    		$(this).closest("tr").find('td:eq(6)').html(new_subtotal);
+    	}
+  	}
+  });
+}
+function totalFact(){
+  var TableData = new Array();
+  var i = 0;
+  var total = 0;
+  var StringDatos = '';
+  $("#inventable>tbody  tr").each(function(index) {
+  if (index >= 0) {
+      var subtotal = 0;
+      $(this).children("td").each(function(index2) {
+        switch (index2) {
+          case 6:
+            var isVisible = false
+            isVisible = $(this).filter(":visible").length > 0;
+            if (isVisible == true) {
+              subtotal = parseFloat($(this).text());
+              if (isNaN(subtotal)) {
+                subtotal = 0;
+              }
+            } else {
+              subtotal = 0;
+            }
+            break;
+        }
+      });
+      total += subtotal;
+    }
+  });
+  total = round(total, 2);
+  total_dinero = total.toFixed(2);
+  $('#total_dinero').html("<strong>" + total_dinero + "</strong>");
+  $('#totaltexto').load('getData.php?' + 'process=total_texto&total=' + total_dinero);
+  console.log('total:' + total_dinero);
+}
+// actualize table data to server
+$(document).on("click","#submit1",function(){
+	senddata();
+});
+$(document).on("click", "#btnEsc", function (event) {
+		reload1();
+});
+
+$(document).on("click", ".print1", function () {
+	  var totalfinal=parseFloat($('#totalfactura').val());
+	 	var facturado= totalfinal.toFixed(2);
+    $(".modal-body #facturado").val(facturado);
+});
+$(document).on("click", "#btnPrintFact", function (event) {
+	imprime1();
+});
+
+$(document).on("click","#print2",function(){
+	imprime2();
+});
+
+
+function senddata() {
+	urlprocess=$('#urlprocess').val();
+  //Obtener los valores a guardar de cada item facturado
+  var i = 0;
+  var StringDatos = "";
+  var id = '1';
+  var id_empleado =$("#id_empleado").val();
+  var id_cliente = $("select#id_cliente option:selected").val();
+  var numero_doc = $("#numero_doc").val();
+	var id_factura = $("#id_factura").val();
+	var tipo_impresion = $("#tipo_impresion").val();
+	var credito = $("#con_pago").val();
+	var id_apertura = $("#id_apertura").val();
+	var caja = $("#caja").val();
+	var turno = $("#turno").val();
+
+  var total_ventas = $('#total_dinero').text();
+  var array_json = new Array();
+  var text = '';
+  $("#inventable>tbody tr").each(function(index) {
+    if (index >= 0){
+      var campo0, campo1, campo2, campo3, campo4, campo5, campo6, campo7, campo8;
+      $(this).children("td").each(function(index2) {
+        switch (index2) {
+          case 0:
+            campo0 = $(this).text();
+            if (campo0 == undefined) {
+              campo0 = '';
+            }
+            break;
+          case 1:
+            campo1 = $(this).text();
+            break;
+          case 2:
+            campo2 = $(this).text();
+            break;
+
+          case 4:
+            campo3 = $(this).find("#precio_venta").val()
+						  break;
+          case 5:
+            campo4 = $(this).find("#cant").val();
+            break;
+          case 6:
+            campo5 = $(this).text();
+        }
+      });
+      if (campo0 != "" || campo0 == undefined || isNaN(campo0) == false) {
+
+        if( campo4!=0){
+          var obj = new Object();
+          obj.id = campo0;
+          obj.stock = campo2;
+          obj.precio = campo3;
+          obj.cantidad = campo4;
+          obj.subtotal = campo5;
+          //convert object to json string
+          text=JSON.stringify(obj);
+          array_json.push(text);
+          i = i + 1;
+        }
+      }
+    }
+  });
+  json_arr = '['+array_json+']';
+  console.log('jsons:'+json_arr);
+  var dataString = 'process=insertar_venta'+'&tipo_impresion='+tipo_impresion+'&id_cliente='+id_cliente+'&id_factura='+id_factura;
+  dataString += '&cuantos='+i+'&id_empleado='+id_empleado+'&credito='+credito+'&total_ventas='+total_ventas+'&json_arr='+json_arr+"&id_apertura="+id_apertura+"&turno="+turno+"&caja="+caja;
+	////alert(dataString)
+  $.ajax({
+    type: 'POST',
+    url: urlprocess,
+    data: dataString,
+    dataType: 'json',
+    success: function(datax) {
+      process = datax.process;
+      factura = datax.factura;
+			numero_doc=datax.numero_doc;
+      display_notify(datax.typeinfo, datax.msg);
+			activa_modal(factura,numero_doc);
+    }
+  });
+}
+
+$(document).on("keyup","#efectivo",function(){
+  total_efectivo();
+});
+
+function activa_modal(numfact,numdoc){
+	urlprocess=$('#urlprocess').val();
+	$('#viewModal').modal({backdrop: 'static',keyboard: false});
+	var totalfinal=parseFloat($('#total_dinero').text());
+	var tipo_impresion=$('#tipo_impresion').val();
+	if (tipo_impresion=="TIK"){
+		$('#fact_cf').hide();
+	}
+	else{
+		$('#fact_cf').show();
+	}
+	if (tipo_impresion=="CCF"){
+		$('#ccf').show();
+
+		//para traer datos de cliente si existe
+		var id_client = $('#id_cliente').val();
+		var dataString = 'process=mostrar_datos_cliente' + '&id_client=' + id_client;
+		$.ajax({
+			type: 'POST',
+			url: urlprocess,
+			data: dataString,
+			dataType: 'json',
+			success: function(data) {
+				nit = data.nit;
+				registro = data.registro;
+				nombreape= data.nombreape;
+				$('#nit').val(nit);
+				$('#nrc').val(registro);
+				$('#nombreape').val(nombreape);
+			}
+		});
+
+	}
+	else{
+		$('#ccf').hide();
+	}
+	var facturado= totalfinal.toFixed(2);
+  $(".modal-body #facturado").val(facturado);
+
+  $(".modal-body #fact_num").html(numdoc);
+}
+function total_efectivo(){
+	var efectivo=parseFloat($('#efectivo').val());
+	var totalfinal=parseFloat($('#total_dinero').text());
+	var facturado= totalfinal.toFixed(2);
+	$('#facturado').val(facturado);
+	if (isNaN(parseFloat(efectivo))){
+		efectivo=0;
+	}
+	if (isNaN(parseFloat(totalfinal))){
+		totalfinal=0;
+	}
+	var cambio=efectivo-totalfinal;
+	var cambio=round(cambio, 2);
+	var	cambio_mostrar=cambio.toFixed(2);
+	$('#cambio').val(cambio_mostrar);
+}
+function imprime1(){
+  var numero_doc = $(".modal-body #fact_num").html();
+  var print = 'imprimir_fact';
+  var tipo_impresion = $("#tipo_impresion").val();
+
+  var id_factura=$("#id_factura").val();
+	if (tipo_impresion=="TIK"){
+		  var num_doc_fact = '';
+			numero_factura_consumidor='';
+	}
+	else{
+		var numero_factura_consumidor = $(".modal-body #num_doc_fact").val();
+		var num_doc_fact = $(".modal-body #num_doc_fact").val();
+	}
+	var dataString = 'process=' + print + '&numero_doc=' + numero_doc + '&tipo_impresion=' + tipo_impresion + '&num_doc_fact=' + id_factura+'&numero_factura_consumidor='+numero_factura_consumidor;
+
+	if (tipo_impresion=="CCF"){
+		nit=$('.modal-body #nit').val();
+		nrc=$('.modal-body #nrc').val();
+		nombreape=$('.modal-body #nombreape').val();
+		dataString +='&nit=' + nit+ '&nrc=' + nrc+'&nombreape=' + nombreape;
+ 	}
+
+/*
+//estas opciones son para generar recibo o factura en  printer local y validar si es win o linux
+if (tipo_impresion == 'TIK') {
+				if (sist_ope == 'win') {
+					$.post("http://"+dir_print+"printposwin1.php", {
+						datosventa: datos.facturar,
+						efectivo: efectivo_fin,
+						cambio: cambio_fin,
+						shared_printer_pos:shared_printer_pos,
+						headers:headers,
+						footers:footers,
+						a_pagar:a_pagar,
+						monto_vale: monto_vale,
+					})
+				} else {
+					$.post("http://"+dir_print+"printpos1.php", {
+						datosventa: datos.facturar,
+						efectivo: efectivo_fin,
+						cambio: cambio_fin,
+						headers:headers,
+						footers:footers,
+						a_pagar:a_pagar,
+						 monto_vale: monto_vale,
+					});
+				}
+}
+*/
+  $.ajax({
+    type: 'POST',
+    url: urlprocess,
+    data: dataString,
+    dataType: 'json',
+    success: function(datos) {
+			var sist_ope = datos.sist_ope;
+      var dir_print=datos.dir_print;
+      var shared_printer_win=datos.shared_printer_win;
+			var shared_printer_pos=datos.shared_printer_pos;
+			var headers=datos.headers;
+			var footers=datos.footers;
+      var efectivo_fin = parseFloat($('#efectivo').val());
+      var cambio_fin = parseFloat($('#cambio').val());
+
+      //esta opcion es para generar recibo en  printer local y validar si es win o linux
+      if (tipo_impresion == 'COF') {
+        if (sist_ope == 'win') {
+          $.post("http://"+dir_print+"printfactwin1.php", {
+						datosventa: datos.facturar,
+						efectivo: efectivo_fin,
+						cambio: cambio_fin,
+						shared_printer_win:shared_printer_win
+          })
+        } else {
+          $.post("http://"+dir_print+"printfact1.php", {
+            datosventa: datos.facturar,
+            efectivo: efectivo_fin,
+            cambio: cambio_fin
+          }, function(data, status) {
+
+            if (status != 'success') {
+              //alert("No Se envio la impresión " + data);
+            }
+
+          });
+        }
+      }
+			if (tipo_impresion == 'ENV') {
+        if (sist_ope == 'win') {
+          $.post("http://"+dir_print+"printenvwin1.php", {
+						datosventa: datos.facturar,
+						efectivo: efectivo_fin,
+						cambio: cambio_fin,
+						shared_printer_win:shared_printer_win
+          })
+        } else {
+          $.post("http://"+dir_print+"printenv1.php", {
+            datosventa: datos.facturar,
+            efectivo: efectivo_fin,
+            cambio: cambio_fin
+          }, function(data, status) {
+
+            if (status != 'success') {
+              //alert("No Se envio la impresión " + data);
+            }
+
+          });
+        }
+      }
+			if (tipo_impresion == 'TIK') {
+				if (sist_ope == 'win') {
+          $.post("http://"+dir_print+"printposwin1.php", {
+						datosventa: datos.facturar,
+						efectivo: efectivo_fin,
+						cambio: cambio_fin,
+						shared_printer_pos:shared_printer_pos,
+						headers:headers,
+						footers:footers,
+          })
+        } else {
+          $.post("http://"+dir_print+"printpos1.php", {
+            datosventa: datos.facturar,
+            efectivo: efectivo_fin,
+            cambio: cambio_fin,
+						headers:headers,
+						footers:footers,
+          }, function(data, status) {
+
+            if (status != 'success') {
+              //alert("No Se envio la impresión " + data);
+            }
+
+          });
+        }
+      }
+			if (tipo_impresion == 'CCF') {
+        if (sist_ope == 'win') {
+          $.post("http://"+dir_print+"printcfwin1.php", {
+						datosventa: datos.facturar,
+						efectivo: efectivo_fin,
+						cambio: cambio_fin,
+						shared_printer_win:shared_printer_win
+          })
+        } else {
+          $.post("http://"+dir_print+"printcf1.php", {
+            datosventa: datos.facturar,
+            efectivo: efectivo_fin,
+            cambio: cambio_fin
+          }, function(data, status) {
+
+            if (status != 'success') {
+              //alert("No Se envio la impresión " + data);
+            }
+
+          });
+        }
+      }
+    //  setInterval("reload1();", 500);
+    }
+  });
+}
+
+function imprime2(){
+	//Utilizar la libreria esc pos php
+	//Calcular los valores a guardar de cad item del inventario
+	var i=0;
+	var precio_venta,precio_venta, cantidad,id_prod,id_empleado;
+	var elem1 = '';
+	var descripcion='';
+	var tipoprodserv = '';  tipoprod = '';
+	var  StringDatos="";
+	var id=$("select#tipo_entrada option:selected").val(); //get the value
+
+	var id_cliente=$("select#id_cliente option:selected").val(); //get the value
+	if (id=='0'){
+		$('#tipo_entrada').focus();
+	}
+	var numero_doc=$("#numero_doc").val();
+	var numero_doc2=$("#numero_doc2").val();
+	var total_ventas=$('#total_dinero').text();
+	var fecha_movimiento=$("#fecha").val();
+	var fecha_movimiento2=$("#fecha2").val();
+
+	if (numero_doc==undefined || numero_doc==''){
+		 numero_doc=0;
+	}
+	var verificaempleado;
+	var verifica=[];
+	 $("#inventable>tbody tr ").each(function (index) {
+		 if (index>=0){
+			//verificaempleado=false;
+      var campo0,campo1, campo2, campo3, campo4, campo5, campo6;
+      $(this).children("td").each(function (index2) {
+      switch (index2){
+      	case 0:
+						campo0 = $(this).text();
+						if (campo0==undefined){
+							campo0='';
+						}
+                break;
+        case 1:
+						campo1 = $(this).text();
+						elem1 = campo1.split('(');
+						descripcion=elem1[0];
+						var tipoprodserv1 = elem1[1];
+						var ln= tipoprodserv1.length-1;
+						tipoprodserv = tipoprodserv1 .substring(0,ln);
+
+                        break;
+                    case 2:
+						campo2 = $(this).text();
+                        break;
+                    case 4:
+						 campo3= $(this).find("#precio_venta").val();
+						if (isNaN(campo3)==false){
+							precio_venta=parseFloat(campo3);
+						}
+                        break;
+                    case 5:
+                        campo4= $(this).find("#cant").val();
+						if (isNaN(campo4)==false){
+							cantidad=parseFloat(campo4);
+						}
+                        break;
+                    case 6:
+						campo5 = $(this).text();
+
+                }
+
+
+            });
+
+            if(campo0!=""|| campo0==undefined || isNaN(campo0)==false ){
+				//StringDatos+=campo0+"|"+tipoprodserv+"|"+precio_venta+"|"+cantidad+"|"+id_empleado+"|"+verificaempleado+"#";
+				StringDatos+=campo0+"|"+descripcion+"|"+tipoprodserv+"|"+precio_venta+"|"+cantidad+"|"+id_empleado+"#";
+				verifica.push(verificaempleado);
+				i=i+1;
+			}
+          }
+
+        });
+       verifica.forEach(function (item, index, array) {
+			if (item=='verificar'){
+				verificaempleado='verificar';
+			}
+		});
+	var id=$("select#tipo_entrada option:selected").val(); //get the value
+	if (id=='1'){
+		var dataString='process=print2'+'&stringdatos='+StringDatos+'&cuantos='+i+'&id='+id+'&numero_doc='+numero_doc+'&fecha_movimiento='+fecha_movimiento+'&id_cliente='+id_cliente;
+			dataString+='&total_ventas='+total_ventas+'&verificaempleado='+verificaempleado;
+	}
+	if (id=='2'){
+		var dataString='process=print2'+'&stringdatos='+StringDatos+'&cuantos='+i+'&id='+id+'&numero_doc='+numero_doc2+'&fecha_movimiento='+fecha_movimiento2+'&id_cliente='+id_cliente;
+			dataString+='&total_ventas='+total_ventas+'&verificaempleado='+verificaempleado;
+	}
+	if (verificaempleado=='noverificar'){
+		$.ajax({
+				type:'POST',
+				url:'editar_factura.php',
+				data: dataString,
+				dataType: 'json',
+				success: function(datos){
+						sist_ope=datos.sist_ope;
+					//esta opcion es para generar recibo en  printer local y validar si es win o linux
+					if (sist_ope=='win'){
+						$.post("http://localhost:8080/variedades/printpos2.php",{datosventa:datos.facturar})
+					}
+					else {
+						$.post("http://localhost/variedades/printpos2.php",{datosventa:datos.facturar})
+					}
+				}
+			});
+		}
+		else{
+			var typeinfo='Warning';
+			var msg='Falta seleccionar Empleado que brinda algun servicio en Factura !';
+			display_notify(typeinfo,msg);
+		}
+
+}
+
+
+ function reload1(){
+	location.href = 'venta.php';
+}
+function deleted() {
+	var id_producto = $('#id_producto').val();
+	var dataString = 'process=deleted' + '&id_producto=' + id_producto;
+	$.ajax({
+		type : "POST",
+		url : "borrar_producto.php",
+		data : dataString,
+		dataType : 'json',
+		success : function(datax) {
+			display_notify(datax.typeinfo, datax.msg);
+			setInterval("location.reload();", 3000);
+			$('#deleteModal').hide();
+		}
+	});
+}
+$("#inventable").on('change', '#select_precios', function(){
+	subtotales();
+	totales();
+});
+function subtotales(){
+	$("#inventable tbody>tr").each(function (index) {
+		precio_lista= $(this).find("#select_precios option:selected").val();
+		$(this).find("#precio_venta").val(precio_lista);
+	});
+}
+
+$(document).on("click", "#btnAddClient", function(event) {
+  agregarcliente();
+});
+function agregarcliente() {
+	urlprocess=$('#urlprocess').val();
+  var nombress = $(".modal-body #nombress").val();
+  var duii = $(".modal-body #duii").val();
+  var tel1 = $(".modal-body #tel1").val();
+  var tel2 = $(".modal-body #tel2").val();
+  var dataString = 'process=agregar_cliente' + '&nombress=' + nombress;
+  dataString += '&dui=' + duii + '&tel1=' + tel1 + '&tel2=' + tel2;
+  $.ajax({
+    type: "POST",
+    url: urlprocess,
+    data: dataString,
+    dataType: 'json',
+    success: function(datax) {
+      var process = datax.process;
+      var id_client = datax.id_client;
+      // Agragar datos a select2
+      //var nombreape = nombress + " " + apellidoss;
+      $("#id_cliente").append("<option value='" + id_client + "' selected>" + nombress + "</option>");
+      $("#id_cliente").trigger('change');
+
+      //Cerrar Modal
+      $('#clienteModal').modal('hide');
+      //Agregar NRC y NIT al form de Credito Fiscal
+			display_notify(datax.typeinfo, datax.msg);
+			$(document).on('hidden.bs.modal', function(e) {
+				var target = $(e.target);
+				target.removeData('bs.modal').find(".modal-content").html('');
+			});
+    }
+  });
+}
+$(document).on("click", "#btnEsc2", function (event) {
+  $('#clienteModal').modal('hide');
+		//reload1();
+});

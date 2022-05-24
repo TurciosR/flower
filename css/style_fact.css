@@ -1,0 +1,21 @@
+
+/* Usado en facturacion */
+#inventable{
+    	font-family: 'Open Sans';
+    	 font-style: normal;
+    	 font-size: small;
+		font-weight: 400;
+    }
+    .table thead tr > th.success{
+		background-color: #428bca !important;
+		color: white !important;
+	}
+	.table > tfoot > tr > .thick-line {
+		border-top: 2px solid;
+	}
+	.btn span.fa {
+	opacity: 0;
+	}
+	.btn.active span.fa {
+	opacity: 1;
+	}
